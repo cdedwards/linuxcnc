@@ -61,7 +61,7 @@ class array:
                     os.remove(self.outFile)
                 self.outFile = '{}/array_{}.ngc'.format(self.tmpDir, time.time())
                 shutil.copyfile(fName, self.outFile)
-                self.c.program_open('blank.ngc')
+                self.c.program_open('./wizards/blank.ngc')
                 self.c.program_open(self.outFile)
         else:
             print('Unknown GUI in .ini file')
@@ -216,12 +216,13 @@ class array:
                         break
                 self.fNgc = '{}/array.ngc'.format(self.tmpDir)
                 outNgc = open(self.fNgc, 'w')
-                xPos = (self.s.g5x_offset[0] - self.s.g92_offset[0]) * units
-                yPos = (self.s.g5x_offset[1] - self.s.g92_offset[1]) * units
+                xIndex = [5221,5241,5261,5281,5301,5321,5341,5361,5381][0]
+                outNgc.write('#<ucs_x_offset> = #{}\n'.format(xIndex))
+                outNgc.write('#<ucs_y_offset> = #{}\n'.format(xIndex + 1))
                 for row in range(rows):
                     for column in range(columns):
                         outNgc.write('\n(row:{}  column:{})\n'.format(row + 1, column + 1))
-                        outNgc.write('G10 L2 P0 X{} Y{}\n'.format(xPos + column * xOffset * units, yPos + row * yOffset * units))
+                        outNgc.write('G10 L2 P0 X[{} + #<ucs_x_offset>] Y[{} + #<ucs_y_offset>]\n'.format(column * xOffset * units, row * yOffset * units))
                         inCod = open(self.fCode, 'r')
                         for line in inCod:
                             a = b = c = ''
@@ -233,7 +234,7 @@ class array:
                             else:
                                 outNgc.write(line)
                         inCod.close()
-                outNgc.write('G10 L2 P0 X{} Y{}\n'.format(xPos, yPos))
+                outNgc.write('G10 L2 P0 X#<ucs_x_offset> Y#<ucs_y_offset>\n')
                 outNgc.write('M30\n')
                 outNgc.close()
                 self.load_file(self.fNgc)
@@ -280,6 +281,7 @@ class array:
         t.attach(xCLabel, 0, 1, 0, 1)
         self.xCEntry = gtk.Entry()
         self.xCEntry.set_width_chars(10)
+        self.xCEntry.set_text('1')
         self.xCEntry.connect('changed', self.data_change)
         t.attach(self.xCEntry, 1, 2, 0, 1)
         xOLabel = gtk.Label('Column\nOffset')

@@ -204,9 +204,8 @@ class EditorBase(QsciScintilla):
         self.setMarginsFont(self.font)
 
         # Margin 0 is used for line numbers
-        fontmetrics = QFontMetrics(self.font)
         self.setMarginsFont(self.font)
-        self.setMarginWidth(0, fontmetrics.width("00000") + 6)
+        self.set_margin_width(7)
         self.setMarginLineNumbers(0, True)
         self.setMarginsBackgroundColor(QColor("#cccccc"))
 
@@ -245,6 +244,11 @@ class EditorBase(QsciScintilla):
         # not too small
         self.setMinimumSize(200, 100)
         self.filepath = None
+
+    def set_margin_width(self, width):
+        fontmetrics = QFontMetrics(self.font)
+        self.setMarginsFont(self.font)
+        self.setMarginWidth(0, fontmetrics.width("0"*width) + 6)
 
     # must set lexer paper background color _and_ editor background color it seems
     def set_background_color(self, color):
@@ -332,6 +336,7 @@ class GcodeDisplay(EditorBase, _HalWidgetBase):
         STATUS.connect('file-loaded', self.load_program)
         STATUS.connect('line-changed', self.highlight_line)
         STATUS.connect('graphics-line-selected', self.highlight_line)
+        STATUS.connect('command-stopped', lambda w: self.run_stopped())
 
         if self.idle_line_reset:
             STATUS.connect('interp_idle', lambda w: self.set_line_number(None, 0))
@@ -405,6 +410,9 @@ class GcodeDisplay(EditorBase, _HalWidgetBase):
 
     def emit_percent(self, percent):
         pass
+
+    def run_stopped(self):
+        self.emit_percent(-1)
 
     def set_line_number(self, line):
         STATUS.emit('gcode-line-selected', line)
@@ -768,6 +776,9 @@ class GcodeEditor(QWidget, _HalWidgetBase):
 
     def get_line(self):
         return self.editor.getCursorPosition()[0] +1
+
+    def set_margin_width(self,width):
+        self.editor.set_margin_width(width)
 
     # designer recognized getter/setters
     # auto_show_mdi status

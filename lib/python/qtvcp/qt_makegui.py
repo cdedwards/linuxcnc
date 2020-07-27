@@ -1,4 +1,7 @@
-import os,sys
+import os
+import sys
+import subprocess
+
 from PyQt5 import QtGui, QtCore, QtWidgets, uic
 import traceback
 
@@ -66,14 +69,21 @@ class MyEventFilter(QtCore.QObject):
                     p,k,c,s,ctrl = self.process_event(event,False)
                     handled = self.w.handler_instance.processed_key_event__(receiver,event,p,k,c,s,ctrl)
                 if handled: return True
+            elif event.type() in (QtCore.QEvent.FocusIn, QtCore.QEvent.FocusOut):
+                self.w.handler_instance.processed_focus_event__(receiver,event)
             #Call Base Class Method to Continue Normal Event Processing
             return super(MyEventFilter,self).eventFilter(receiver, event)
         except:
             return super(MyEventFilter,self).eventFilter(receiver, event)
 
-class MyWindow(QtWidgets.QMainWindow):
-    def __init__(self, halcomp, path):
-        super(MyWindow, self).__init__()
+
+class _VCPWindow(QtWidgets.QMainWindow):
+    def __init__(self, halcomp=None, path=None):
+        super(_VCPWindow,self).__init__()
+        # only initialize once for all instances
+        if self.__class__._instanceNum >=1:
+            return
+        self.__class__._instanceNum += 1
 
         self.filename = path.XML
         self.halcomp = halcomp
@@ -107,19 +117,75 @@ class MyWindow(QtWidgets.QMainWindow):
             log.debug('Calling handler file Closing_cleanup__ function.')
             self.handler_instance.closing_cleanup__()
 
+    def load_resources(self):
+        def qrccompile(qrcname,qrcpy):
+            log.info('Compiling qrc: {}'.format(qrcname))
+            try:
+                subprocess.call(["pyrcc5","-o","{}".format(qrcpy),"{}".format(qrcname)])
+            except OSError as e:
+                log.error('{}, pyrcc5 error. try in terminal: sudo apt install pyqt5-dev-tools to install dev tools'.format(e))
+                msg = QtWidgets.QMessageBox()
+                msg.setIcon(QtWidgets.QMessageBox.Critical)
+                msg.setText("QTvcp qrc compiling ERROR! ")
+                msg.setInformativeText('Qrc Compile error, try: "sudo apt install pyqt5-dev-tools" to install dev tools')
+                msg.setWindowTitle("Error")
+                msg.setDetailedText('You can continue but some images may be missing')
+                msg.setStandardButtons(QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Abort)
+                msg.show()
+                retval = msg.exec_()
+                if retval == QtWidgets.QMessageBox.Abort: #cancel button
+                    log.critical("Canceled from qrc compiling Error Dialog\n")
+                    raise SystemError('pyrcc5 compiling error: try: "sudo apt install pyqt5-dev-tools"')
+
+        if self.PATHS.IS_SCREEN:
+            DIR = self.PATHS.SCREENDIR
+            BNAME = self.PATHS.BASENAME
+        else:
+            DIR = self.PATHS.PANELDIR
+            BNAME = self.PATHS.BASENAME
+        qrcname = os.path.join(DIR, BNAME, BNAME+'.qrc')
+        qrcpy = os.path.join(DIR, BNAME, 'resources.py')
+
+        # Is there a qrc file in directory?
+        if os.path.isfile(qrcname):
+            qrcTime =  os.stat(qrcname).st_mtime
+            if os.path.isfile(qrcpy):
+                pyTime = os.stat(qrcpy).st_mtime
+                # is py older then qrc file?
+                if pyTime < qrcTime:
+                    qrccompile(qrcname,qrcpy)
+            # there is a qrc file but no resources.py file...
+            else:
+                qrccompile(qrcname,qrcpy)
+
+            # there is a qrc file but no resources.py file...
+        # is there a resource.py in the directory?
+        if os.path.isfile(qrcpy):
+            try:
+                import resources
+            except Exception as e:
+                log.warning('couldn not load () resource file: {}'.format(qrcpy, e))
+
     def instance(self):
+        self.load_resources()
         try:
             instance = uic.loadUi(self.filename, self)
         except AttributeError as e:
-            log.critical(e)
-            log.critical('Did a widget signal call a missing function name in the handler file?')
-            message = 'Did a widget signal call a missing function name in the handler file?\nPython Error:\n'+ str(e)
-            rtn = QtWidgets.QMessageBox.critical(None, "QTVCP Error", message)
-            sys.exit(0)
-
-        log.debug('QTVCP top instance: {}'.format(self))
-        for widget in instance.findChildren(QtCore.QObject):
-            log.debug('QTVCP Widget: {}'.format(widget))
+            formatted_lines = traceback.format_exc().splitlines()
+            if 'slotname' in formatted_lines[-2]:
+                log.critical('Missing slot name in handler file {}'.format(e))
+                message = '''A widget in the ui file, was assigned a signal \
+call to a missing function name in the handler file?\n
+There may be more. Some functions might not work.\n
+Python Error:\n {}'''.format(str(e))
+                rtn = QtWidgets.QMessageBox.critical(None, "QTVCP Error", message)
+            else:
+                log.critical(e)
+                sys.exit(0)
+        else:
+            log.debug('QTVCP top instance: {}'.format(self))
+            for widget in instance.findChildren(QtCore.QObject):
+                log.debug('QTVCP Widget: {}'.format(widget))
 
     def apply_styles(self, fname = None):
         if self.PATHS.IS_SCREEN:
@@ -133,21 +199,35 @@ class MyWindow(QtWidgets.QMainWindow):
             QtWidgets.qApp.setStyle(fname)
             return
         
-        # apply default qss file or specified file
+        # Check for Preference file specified qss
+        if fname is None:
+            if self.PREFS_:
+                path = self.PREFS_.getpref('style_QSS_Path', 'DEFAULT' , str, 'BOOK_KEEPING')
+                if path.lower() == 'none':
+                    return
+                if not path.lower() == 'default':
+                    fname = path
+
+        # check for default base named qss file 
         if fname is None:
             if self.PATHS.QSS is not None:
-                qssname = self.PATHS.QSS
-            else:
-                return
-        elif not os.path.isfile(fname):
-            temp = os.path.join(os.path.expanduser(fname))
-            qssname = os.path.join(DIR, BNAME,fname+'.qss')
+                fname = self.PATHS.QSS
+
+        # if qss file is not a file, try expanding/adding a leading path
+        if fname is not None:
             if not os.path.isfile(fname):
-                qssname = temp
+                temp = os.path.join(os.path.expanduser(fname))
+                qssname = os.path.join(DIR, BNAME,fname+'.qss')
+                if not os.path.isfile(fname):
+                    qssname = temp
+            else:
+                qssname = fname
         else:
-            qssname = fname
+            return
         try:
             qss_file = open(qssname).read()
+            # qss files aren't friendly about changing image paths
+            qss_file = qss_file.replace('url(:/newPrefix/images', 'url({}'.format(self.PATHS.IMAGEDIR))
             self.setStyleSheet(qss_file)
             return
         except:
@@ -235,6 +315,14 @@ class MyWindow(QtWidgets.QMainWindow):
                 handlers[n] = Trampoline(v)
 
         return handlers,mod,object
+
+class VCPWindow(_VCPWindow):
+    _instance = None
+    _instanceNum = 0
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = _VCPWindow.__new__(cls, *args, **kwargs)
+        return cls._instance
 
     def __getitem__(self, item):
         return getattr(self, item)
