@@ -61,7 +61,7 @@ import hal
 try:
     LINUXCNCVERSION = os.environ['LINUXCNCVERSION']
 except:
-    LINUXCNCVERSION = 'UNAVAILABLE'
+    LINUXCNCVERSION = 'Master (2.9)'
 
 def get_value(w):
     try:
@@ -340,8 +340,10 @@ class App:
             itr = self.widgets.discovery_interface_combobox.get_active_iter()
             d = self.widgets.discovery_interface_combobox.get_model().get_value(itr, 1)
             a = self.widgets.discovery_address_entry.get_text()
-        print('discovery:',n,d,a)
-        return n,d,a
+            r =  self.widgets.discovery_read_option.get_active()
+            print ('discovery:',n,d,a,r)
+            return n,d,a,r
+        return None,None,None,None
 
     def discovery_interface_combobox_changed(self,w):
         itr = w.get_active_iter()
@@ -486,10 +488,6 @@ class App:
         self.widgets.help_window.set_title(_("Help Pages") )
         self.widgets.helpnotebook.set_current_page(0)
         self.widgets.help_window.show_all()
-        if self.debugstate:
-            self.widgets.input_tab.set_visible(True)
-        else:
-            self.widgets.input_tab.set_visible(False)
         self.widgets.help_window.present()
 
     def print_page(self,print_dialog, context, n, imagename):
@@ -1171,8 +1169,8 @@ PNCconf will use internal firmware data"%self._p.FIRMDIR),True)
                     #dbg("secondary modulename, function:  %s, %s."%( tempmod,tempfunc), "firmraw")
                     if tempmod in("Encoder","MuxedQCount") and tempfunc in ("MUXED INDEX MASK (IN)","INDEXMASK (IN)"):
                         numencoderpins = 4
-                    if tempmod in("SSerial","SSERIAL") and tempfunc in ("TXDATA1","TXDATA2","TXDATA3",
-                            "TXDATA4","TXDATA5","TXDATA6","TXDATA7","TXDATA8"):
+                    if tempmod in("SSerial","SSERIAL") and tempfunc in ("TXDATA0", "TXDATA1","TXDATA2","TXDATA3",
+                            "TXDATA4","TXDATA5","TXDATA6","TXDATA7"):
                         sserialchannels +=1
                 #dbg("temp: %s, converted name: %s. num %d"%( tempfunc,convertedname,instance_num), "firmraw")
                 if not tempcon in tempconlist:
@@ -1188,8 +1186,6 @@ PNCconf will use internal firmware data"%self._p.FIRMDIR),True)
                         for k in range(0,placeholders):
                             #print "%d fill here with %d parts"% (k,placeholders)
                             temppinlist.append((_PD.NUSED,0))
-            if not sserialchannels == 0:
-                sserialchannels +=1
             # 7i96 doesn't number the connectors with P numbers so we fake it
             # TODO
             # probably should move the connector numbers to board data rather then firmware
@@ -1210,18 +1206,28 @@ PNCconf will use internal firmware data"%self._p.FIRMDIR),True)
             return temp
 
     def discover_mesacards(self):
-        name, interface, address = self.get_discovery_meta()
+        name, interface, address, readoption = self.get_discovery_meta()
         if name is None: return None
 
         if not name:
             name = '5i25'
 
-        if self.debugstate:
+        if self.debugstate or readoption:
             print('try to discover board by reading help text input:',name)
             buf = self.widgets.textinput.get_buffer()
             info = buf.get_text(buf.get_start_iter(),
                         buf.get_end_iter(),
                         True)
+
+            # This is a HACK to pass info about the interface forward
+            # otherwise thw driver info is blank in the discovered firmware
+            if interface == '--addr':
+                inter = 'ETH'
+            elif interface == '--epp':
+                inter = 'EPP'
+            else:
+                inter = 'PCI'
+            info = info + "\n {}".format(inter)
         else:
             info = self.call_mesaflash(name,interface,address)
         print('INFO:',info,'<-')
@@ -1330,13 +1336,18 @@ PNCconf will use internal firmware data"%self._p.FIRMDIR),True)
             i = i.lstrip()
             temp2 = i.split(" ")
             #print i,temp2
-            if 'ETH' in i:
-                DRIVER = 'hm2_eth'
-            if 'PCI' in i:
-                DRIVER = 'hm2_pci'
             if 'BOARDNAME' in i:
                 BOARDNAME = temp2[2].strip('MESA').lower()
                 add_text(ELEMENT,'BOARDNAME',BOARDNAME)
+            if 'ETH' in i:
+                DRIVER = 'hm2_eth'
+            elif 'PCI' in i:
+                DRIVER = 'hm2_pci'
+            elif 'EPP' in i:
+                if '7i43' in BOARDNAME.lower():
+                    DRIVER = 'hm2_7i43'
+                else:
+                    DRIVER = 'hm2_7i90'
             if 'DEVICE AT' in i:
                 if ssflag:
                     n1 = add_element(ELEMENT,'SSERIALDEVICES')
@@ -2876,7 +2887,7 @@ Clicking 'existing custom program' will aviod this warning. "),False):
                                                 self.d[p] = _PD.I7I64_T
                                         elif '7I73' in device:
                                             if not '7i73' in self.d[p]:
-                                                self.d[p] = _PD.I7I73_M0_T
+                                                self.d[p] = _PD.I7I73_M1_T
                         else:
                             self.widgets[complabel].set_text("")
                             self.widgets[p].set_sensitive(0)
@@ -4048,6 +4059,7 @@ Clicking 'existing custom program' will aviod this warning. "),False):
             set_text("minlim")
             set_text("maxlim")
             set_text("homesw")
+            set_text("hometandemsw")
             w[axis+"homesearchvel"].set_text("%d" % (d[axis+"homesearchvel"]*60))
             w[axis+"homelatchvel"].set_text("%d" % (d[axis+"homelatchvel"]*60))
             w[axis+"homefinalvel"].set_text("%d" % (d[axis+"homefinalvel"]*60))
@@ -4061,6 +4073,9 @@ Clicking 'existing custom program' will aviod this warning. "),False):
                 test = self.findsignal(i)
                 if test: homes = True
             w[axis + "homesw"].set_sensitive(homes)
+            w[axis + "hometandemsw"].set_sensitive(homes)
+            w[axis + "hometandemsw"].set_visible(self.tandem_check(axis))
+            w[axis + "labelhometandemsw"].set_visible(self.tandem_check(axis))
             w[axis + "homesearchvel"].set_sensitive(homes)
             w[axis + "searchdir"].set_sensitive(homes)
             w[axis + "latchdir"].set_sensitive(homes)
@@ -4235,6 +4250,7 @@ Clicking 'existing custom program' will aviod this warning. "),False):
             get_text("minlim")
             get_text("maxlim")
             get_text("homesw")
+            get_text("hometandemsw")
             d[axis + "homesearchvel"] = (get_value(w[axis + "homesearchvel"])/60)
             d[axis + "homelatchvel"] = (get_value(w[axis + "homelatchvel"])/60)
             d[axis + "homefinalvel"] = (get_value(w[axis + "homefinalvel"])/60)
@@ -4792,14 +4808,14 @@ Clicking 'existing custom program' will aviod this warning. "),False):
         boardnum = int(pinnumber[4:5])
         channel = None
         pinlist = self.list_related_pins([_PD.STEPA,_PD.STEPB], boardnum, connector, channel, pin, 0)
-        #print pinlist
+        #print ('step gen pinlist:',pinlist)
         for num,i in enumerate(pinlist):
+            #print (i[0],self.d[i[0]], ' is inverted? ', self.d[i[0]+"inv"])
             if self.d[i[0]+"inv"]:
                 gpioname = self.make_pinname(self.findsignal( self.d[i[0]] ),True)
-                #print gpioname
-                if num:
+                if self.d[i[0]+'type'] == _PD.STEPB:
                     signallist_b.append(gpioname)
-                else:
+                elif self.d[i[0]+'type'] == _PD.STEPA:
                     signallist_a.append(gpioname)
         return [signallist_a, signallist_b]
 

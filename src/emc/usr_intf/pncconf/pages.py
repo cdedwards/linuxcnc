@@ -232,6 +232,7 @@ class Pages:
             state = True
         else:
             state = False
+        self.w.input_tab.set_visible(state)
         self.d.advanced_option = state
         self.page_set_state(['options','external','realtime'],state)
         self.d.createsymlink = self.w.createsymlink.get_active()
@@ -514,6 +515,10 @@ class Pages:
         elif w.get_active()+1 == self._p._GMOCCAPY:
             self.w.gmcpy_info.set_expanded(True)
             self.w.gmcpy_info.show()
+            self.w.axis_info.hide()
+            self.w.touchy_info.hide()
+        elif w.get_active()+1 == self._p._QTDRAGON:
+            self.w.gmcpy_info.hide()
             self.w.axis_info.hide()
             self.w.touchy_info.hide()
 
@@ -1455,6 +1460,7 @@ different program to copy to your configuration file.\nThe edited program will b
 ######################
     def on_discovery_interface_combobox_changed(self,w):
         self.a.discovery_interface_combobox_changed(w)
+
 # BOILER CODE
     def __getitem__(self, item):
         return getattr(self, item)

@@ -250,7 +250,7 @@ class materialConverter:
                         self.materialNum = ''
                         self.materialName = 'NAME               = '
                         self.materialKerf = 'KERF_WIDTH         = '
-                        self.materialTHC = 'THC                = 0'
+                        self.materialTHC = 'THC                = 1'
                         self.materialPierceH = 'PIERCE_HEIGHT      = '
                         self.materialPierceD = 'PIERCE_DELAY       = '
                         self.materialPuddleH = 'PUDDLE_JUMP_HEIGHT = 0'
@@ -267,7 +267,7 @@ class materialConverter:
                     elif line.startswith('Tool\ number'):
                         a,b = line.split('=')
                         self.materialNum = '[MATERIAL_NUMBER_{}]'.format(b.strip().replace(']',''))
-                    elif line.startswith('Name'):
+                    elif line.startswith('Name='):
                         a,b = line.split('=',1)
                         self.materialName = 'NAME               = {}'.format(b.strip())
                     elif line.startswith('Kerf\ width'):
