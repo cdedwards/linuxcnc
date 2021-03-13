@@ -119,12 +119,9 @@ class HandlerClass:
         self.w.stackedWidget_dro.setCurrentIndex(0)
         self.w.btn_spindle_pause.setEnabled(False)
         self.w.btn_dimensions.setChecked(True)
-        self.w.btn_touch_sensor.setEnabled(self.w.chk_use_tool_sensor.isChecked())
         self.w.page_buttonGroup.buttonClicked.connect(self.main_tab_changed)
         self.w.filemanager_usb.showMediaDir(quiet = True)
-        self.chk_run_from_line_checked(self.w.chk_run_from_line.isChecked())
-        self.chk_use_camera_changed(self.w.chk_use_camera.isChecked())
-        self.chk_alpha_mode_clicked(self.w.chk_alpha_mode.isChecked())
+
     # hide widgets for A axis if not present
         if "A" not in INFO.AVAILABLE_AXES:
             for i in self.axis_a_list:
@@ -225,8 +222,9 @@ class HandlerClass:
 
     def closing_cleanup__(self):
         if not self.w.PREFS_: return
-        self.w.PREFS_.putpref('last_loaded_directory', os.path.dirname(self.last_loaded_program), str, 'BOOK_KEEPING')
-        self.w.PREFS_.putpref('last_loaded_file', self.last_loaded_program, str, 'BOOK_KEEPING')
+        if self.last_loaded_program is not None:
+            self.w.PREFS_.putpref('last_loaded_directory', os.path.dirname(self.last_loaded_program), str, 'BOOK_KEEPING')
+            self.w.PREFS_.putpref('last_loaded_file', self.last_loaded_program, str, 'BOOK_KEEPING')
         self.w.PREFS_.putpref('Tool to load', STATUS.get_current_tool(), int, 'CUSTOM_FORM_ENTRIES')
         self.w.PREFS_.putpref('Laser X', self.w.lineEdit_laser_x.text().encode('utf-8'), float, 'CUSTOM_FORM_ENTRIES')
         self.w.PREFS_.putpref('Laser Y', self.w.lineEdit_laser_y.text().encode('utf-8'), float, 'CUSTOM_FORM_ENTRIES')
@@ -493,6 +491,7 @@ class HandlerClass:
                 if os.path.isfile(self.last_loaded_program):
                     self.w.cmb_gcode_history.addItem(self.last_loaded_program)
                     self.w.cmb_gcode_history.setCurrentIndex(self.w.cmb_gcode_history.count() - 1)
+                    self.w.cmb_gcode_history.setToolTip(fname)
                     ACTION.OPEN_PROGRAM(self.last_loaded_program)
         ACTION.SET_MANUAL_MODE()
         self.w.manual_mode_button.setChecked(True)
@@ -772,11 +771,13 @@ class HandlerClass:
             self.add_status("Override limits not set")
 
     def chk_run_from_line_checked(self, state):
-        self.w.gcodegraphics.set_inhibit_selection(not state)
         self.w.btn_start.setText("START\n1") if state else self.w.btn_start.setText("START")
 
-    def chk_alpha_mode_clicked(self, state):
+    def chk_alpha_mode_changed(self, state):
         self.w.gcodegraphics.set_alpha_mode(state)
+
+    def chk_inhibit_selection_changed(self, state):
+        self.w.gcodegraphics.set_inhibit_selection(state)
 
     def chk_use_camera_changed(self, state):
         self.w.btn_ref_camera.setEnabled(state)
@@ -801,6 +802,7 @@ class HandlerClass:
                 return
             self.w.cmb_gcode_history.addItem(fname)
             self.w.cmb_gcode_history.setCurrentIndex(self.w.cmb_gcode_history.count() - 1)
+            self.w.cmb_gcode_history.setToolTip(fname)
             ACTION.OPEN_PROGRAM(fname)
             self.add_status("Loaded program file : {}".format(fname))
             self.w.main_tab_widget.setCurrentIndex(TAB_MAIN)

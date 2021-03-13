@@ -443,11 +443,11 @@ class Lcnc_3dGraphics(QGLWidget,  glcanon.GlCanonDraw, glnav.GlNavBase):
                 )
  
             props['G0'] = "%f %s".replace("%f", fmt) % (from_internal_linear_unit(g0, conv), units)
-            props['gG1'] = "%f %s".replace("%f", fmt) % (from_internal_linear_unit(g1, conv), units)
+            props['G1'] = "%f %s".replace("%f", fmt) % (from_internal_linear_unit(g1, conv), units)
             if gt > 120:
                 props['Run'] = _("%.1f Minutes") % (gt/60)
             else:
-                props['Run'] = _("%d Ceconds") % (int(gt))
+                props['Run'] = _("%d Seconds") % (int(gt))
 
             min_extents = from_internal_units(canon.min_extents, conv)
             max_extents = from_internal_units(canon.max_extents, conv)
@@ -570,6 +570,7 @@ class Lcnc_3dGraphics(QGLWidget,  glcanon.GlCanonDraw, glnav.GlNavBase):
             posstrs = []
             droposstrs = []
             for i in range(9):
+                if self.is_lathe() and i ==1: continue
                 a = "XYZABCUVW"[i]
                 if s.axis_mask & (1<<i):
                     posstrs.append(format % (a, positions[i]))
@@ -580,6 +581,7 @@ class Lcnc_3dGraphics(QGLWidget,  glcanon.GlCanonDraw, glnav.GlNavBase):
             droposstrs.append("")
 
             for i in range(9):
+                if self.is_lathe() and i ==1: continue
                 index = s.g5x_index
                 if index<7:
                     label = "G5%d" % (index+3)
@@ -593,6 +595,7 @@ class Lcnc_3dGraphics(QGLWidget,  glcanon.GlCanonDraw, glnav.GlNavBase):
 
             droposstrs.append("")
             for i in range(9):
+                if self.is_lathe() and i ==1: continue
                 a = "XYZABCUVW"[i]
                 if s.axis_mask & (1<<i):
                     droposstrs.append(toolformat % ("TLO", a, tlo_offset[i]))

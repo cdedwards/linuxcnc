@@ -7,7 +7,7 @@ A plasma cutting table control component for use with the LinuxCNC V2.8 or later
 
 .I VERSION:
 .br
-0.200 - 2021 Feb 28 - (QtPlasmaC V0.9.44)
+0.204 - 2021 Mar 08 - (QtPlasmaC V0.9.49)
 
 .I SUMMARY:
 .br
@@ -99,7 +99,7 @@ pin in  bit     program_is_running          "program is running, connect to halu
 pin in  float   puddle_jump_delay           "delay move from pierce height to cut height (seconds), leave disconnected if not required";
 pin in  float   puddle_jump_height          "puddle jump height (percentage of pierce height), leave disconnected if not required";
 pin in  float   requested_velocity          "requested velocity, set by a known requested velocity or connect to motion.requested-vel";
-pin in  s32     resolution = 1              "resolution of the offset counts";
+pin in  s32     resolution = 100            "multiplier for resolution of the offset counts";
 pin in  float   restart_delay               "time from arc failure till next restart attempt";
 pin in  float   safe_height                 "requested safe traverse height (machine units)";
 pin in  float   scribe_arm_delay            "delay from scribe arm to scribe on";
@@ -340,7 +340,6 @@ FUNCTION(_) {
     }
     offset_scale = units_per_mm * fperiod / res;
     velocity_scale = res / units_per_mm / 60;
-    adaptive_feed = 1;
     probe_force_val = 5 * res;
     recovery_velocity = 3 * res;
 
@@ -420,15 +419,25 @@ FUNCTION(_) {
     /* check for an abort */
     /* or for a pause or wait while active */
     if(auto_cut){
-        if(state == IDLE && breakaway && !program_is_idle){
+        if(state == IDLE && (breakaway || float_switch || ohmic_detected) && !program_is_idle){
             torch_on = FALSE;
+            if(!program_is_paused && !program_pause){
+                if(breakaway){
+                    rtapi_print_msg(RTAPI_MSG_ERR,"breakaway switch activated\n"
+                                                  "program is paused.\n");
+                }else if(float_switch){
+                    rtapi_print_msg(RTAPI_MSG_ERR,"float switch activated\n"
+                                                  "program is paused.\n");
+                }else if(ohmic_detected){
+                    rtapi_print_msg(RTAPI_MSG_ERR,"ohmic probe activated\n"
+                                                  "program is paused.\n");
+                }
+            }
             program_pause = TRUE;
             if(stop_type != WAIT){
                 stop_type = PAUSE;
             }
             probe_required = TRUE;
-            rtapi_print_msg(RTAPI_MSG_ERR,"breakaway switch activated\n"
-                                          "program is paused.\n");
             probe_inhibit = TRUE;
             state = MAX_HEIGHT;
         }else if(!probe_test && (external_estop || program_is_idle) && cut_started && !program_run){
@@ -1442,13 +1451,7 @@ FUNCTION(_) {
                         }
                     }
                 }else{
-                    if(breakaway){
-                        if(!program_is_paused){
-                            program_pause = TRUE;
-                        }
-                    }else{
-                        state = IDLE;
-                    }
+                    state = IDLE;
                 }
                 break;
             case TORCHPULSE:
@@ -1567,9 +1570,9 @@ FUNCTION(_) {
                 if(breakaway || float_switch || ohmic_detected){
                     if(!error_message){
                         error_message = TRUE;
-                        rtapi_print_msg(RTAPI_MSG_ERR,"breakaway float or ohmic activated\n"
-                                                      "during consumable change\n"
-                                                      "motion paused.\n");
+                        rtapi_print_msg(RTAPI_MSG_ERR,
+                                        "breakaway float or ohmic activated during consumable change, motion paused.\n"
+                                        "WARNING: MOTION WILL RESUME IMMEDIATELY UPON RESOLVING THIS CONDITION!\n");
                     }
                     break;
                 }
@@ -1633,53 +1636,48 @@ FUNCTION(_) {
                 if(breakaway || float_switch || ohmic_detected){
                     if(!error_message){
                         error_message = TRUE;
-                        rtapi_print_msg(RTAPI_MSG_ERR,"breakaway float or ohmic activated\n"
-                                                      "during consumable change\n"
-                                                      "motion paused.\n");
+                        rtapi_print_msg(RTAPI_MSG_ERR,
+                                        "breakaway float or ohmic activated during consumable change, motion paused.\n"
+                                        "WARNING: MOTION WILL RESUME IMMEDIATELY UPON RESOLVING THIS CONDITION!\n");
                     }
                     break;
                 }
                 error_message = FALSE;
-                if((int)(x_offset_current * 10 * res) == (int)(x_offset_counts * offset_scale * 10 * res) &&
-                  (int)(y_offset_current * 10 * res) == (int)(y_offset_counts * offset_scale * 10 * res)){
-                    cons_change_clear = TRUE;
-                }else{
-                }
-                if(cons_change_clear){
+                if(x_offset_counts == 0 && y_offset_counts == 0){
                     if((int)(x_offset_current * 10 * res) == 0 && (int)(y_offset_current * 10 * res) == 0){
                         consumable_changing = FALSE;
                         cons_change_clear = FALSE;
                         feed_hold = FALSE;
                         state = IDLE;
-                    }else{
-                        if(x_velocity && x_offset_counts != 0){
-                            if(x_offset_counts > 0){
-                                if(x_offset_counts - x_velocity > 0){
-                                    x_offset_counts -= x_velocity;
-                                }else{
-                                    x_offset_counts = 0;
-                                }
+                    }
+                }else{
+                    if(x_velocity && x_offset_counts != 0){
+                        if(x_offset_counts > 0){
+                            if(x_offset_counts - x_velocity > 0){
+                                x_offset_counts -= x_velocity;
                             }else{
-                                if(x_offset_counts + x_velocity < 0){
-                                    x_offset_counts += x_velocity;
-                                }else{
-                                    x_offset_counts = 0;
-                                }
+                                x_offset_counts = 0;
+                            }
+                        }else{
+                            if(x_offset_counts + x_velocity < 0){
+                                x_offset_counts += x_velocity;
+                            }else{
+                                x_offset_counts = 0;
                             }
                         }
-                        if(y_velocity && y_offset_counts != 0){
-                            if(y_offset_counts > 0){
-                                if(y_offset_counts - y_velocity > 0){
-                                    y_offset_counts -= y_velocity;
-                                }else{
-                                    y_offset_counts = 0;
-                                }
+                    }
+                    if(y_velocity && y_offset_counts != 0){
+                        if(y_offset_counts > 0){
+                            if(y_offset_counts - y_velocity > 0){
+                                y_offset_counts -= y_velocity;
                             }else{
-                                if(y_offset_counts + y_velocity < 0){
-                                    y_offset_counts += y_velocity;
-                                }else{
-                                    y_offset_counts = 0;
-                                }
+                                y_offset_counts = 0;
+                            }
+                        }else{
+                            if(y_offset_counts + y_velocity < 0){
+                                y_offset_counts += y_velocity;
+                            }else{
+                                y_offset_counts = 0;
                             }
                         }
                     }
